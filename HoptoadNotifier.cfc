@@ -8,6 +8,9 @@
 			ColdFusion Hoptoad notifier, using V2 of the Hoptoad API
 			[http://help.hoptoadapp.com/faqs/api-2/notifier-api-v2]
 		</note>
+		<note>
+		Modified by CFPROD to work in BlueDragon Server JX
+		</note>
 	</properties>
 </fusedoc>
 --->
@@ -15,24 +18,24 @@
 <cfcomponent output="false">
 
 	<!--- notifier meta data --->
-	<cfset variables.meta = {
-		name    = "CF Hoptoad Notifier",
-		version = "2.0.0",
-		url     = "http://github.com/timblair/coldfusion-hoptoad-notifier"
-	}>
-
+	<cfset variables.meta = StructNew() />
+	<cfset variables.meta.name = "CF Hoptoad Notifier" />
+	<cfset variables.meta.version = "2.0.0" />
+	<cfset variables.meta.url = "http://github.com/timblair/coldfusion-hoptoad-notifier" />
+	
 	<!--- secured and unsecured notifier endpoints --->
-	<cfset variables.hoptoad_endpoint = {
-		default = "http://hoptoadapp.com/notifier_api/v2/notices/",
-		secure  = "https://hoptoadapp.com/notifier_api/v2/notices/"
-	}>
-
+	<cfset variables.hoptoad_endpoint = StructNew() />
+	<cfset variables.hoptoad_endpoint.default = "http://hoptoadapp.com/notifier_api/v2/notices/" />	
+	<cfset variables.hoptoad_endpoint.secure = 	"https://hoptoadapp.com/notifier_api/v2/notices/" />
+    
 	<!--- default instance variables --->
-	<cfset variables.instance = {
-		api_key     = "",
-		environment = "production",
-		use_ssl     = FALSE
-	}>
+    <cfset variables.instance = StructNew() />
+	<cfset variables.instance.api_key = "" />
+	<cfset variables.instance.environment = "testing" />
+	<cfset variables.instance.use_ssl = TRUE />
+
+	
+
 
 	<cffunction name="init" access="public" returntype="any" output="no" hint="Initialise the instance with the appropriate API key">
 		<cfargument name="api_key" type="string" required="yes" hint="The Hoptoad API key for the account to submit errors to">
@@ -75,16 +78,17 @@
 		<cfargument name="error" type="any" required="yes" hint="The error structure to notify Hoptoad about">
 		<cfargument name="session" type="struct" required="no" hint="Any additional session variables to report">
 		<cfargument name="params" type="struct" required="no" hint="Any additional request params to report">
-		<cfset var local = {}>
+		<cfset var local = StructNew()>
 		<!--- we want to be dealing with a plain old structure here --->
 		<cfif NOT isstruct(arguments.error)><cfset arguments.error = errorToStruct(arguments.error)></cfif>
 		<!--- make sure we're looking at the error root --->
-		<cfif structkeyexists(error, "RootCause")><cfset arguments.error = error["RootCause"]></cfif>
+		<cfif structkeyexists(error, "rootcause")><cfset arguments.error = error["rootcause"]></cfif>
 		<!--- create the backtrace --->
-		<cfset local.backtrace = []>
+		<cfset local.backtrace = ArrayNew(1)>
 		<cfif structkeyexists(arguments.error, "tagcontext") AND isarray(arguments.error["tagcontext"])>
 			<cfset local.backtrace = build_backtrace(arguments.error["tagcontext"])>
 		</cfif>
+		
 		<!--- default any messages we don't actually have but should do --->
 		<cfif NOT structkeyexists(arguments.error, "type")><cfset arguments.error.type = "Unknown"></cfif>
 		<cfif NOT structkeyexists(arguments.error, "message")><cfset arguments.error.message = ""></cfif>
@@ -98,17 +102,20 @@
 		<cfset local.xml.append('<error><class>#xmlformat(arguments.error.type)#</class><message>#xmlformat(arguments.error.type)#: #xmlformat(arguments.error.message)#</message>')>
 		<cfif arraylen(local.backtrace)>
 			<cfset local.xml.append('<backtrace>')>
-			<cfloop array="#local.backtrace#" index="local.line">
+			<cfloop from="1" to="#ArrayLen(local.backtrace)#" index="local.line">
 				<cfset local.xml.append('<line file="#xmlformat(local.line.file)#" number="#xmlformat(local.line.line)#"')>
 				<cfif len(local.line.method)><cfset local.xml.append(' method="#xmlformat(local.line.method)#"')></cfif>
 				<cfset local.xml.append(' />')>
 			</cfloop>
 			<cfset local.xml.append('</backtrace>')>
+			
+			<cfelse>
+			<cfset local.xml.append('<backtrace><line file="null" number="1" /></backtrace>')>
 		</cfif>
 		<cfset local.xml.append('</error>')>
 		<!--- overall request object --->
 		<cfset local.xml.append('<request>')>
-		<cfset local.xml.append('<url>' & getPageContext().getRequest().getRequestUrl() & iif(len(cgi.query_string), "'?#cgi.query_string#'", "''") & '</url>')>
+		<cfset local.xml.append('<url>' & getPageContext().getRequest().getRequestUrl().toString() & iif(len(cgi.query_string), "'?#cgi.query_string#'", "''") & '</url>')>
 		<cfif arraylen(local.backtrace) AND listlast(local.backtrace[1].file, ".") EQ "cfc">
 			<cfset local.component = reverse(listfirst(reverse(local.backtrace[1].file), "/"))>
 			<cfset local.xml.append('<component>#xmlformat(local.component)#</component>')>
@@ -169,7 +176,14 @@
 		</cfhttp>
 
 		<!--- parse the returned XML back to a structure --->
-		<cfset local.ret = { endpoint = getEndpointURL(), request = local.xml.toString(), response = local.http, status = local.http.statusCode, id = 0, url = "" }>
+		<cfset local.ret = StructNew() />
+		<cfset local.ret.endpoint = getEndpointURL()  />
+		<cfset local.ret.request = local.xml.toString() />
+		<cfset local.ret.response = local.http />
+		<cfset local.ret.status = local.http.statusCode />
+		<cfset local.ret.id = 0 />
+		<cfset local.ret.url = "" />		
+		
 		<cfif isxml(local.http.filecontent)>
 			<cfset local.ret_xml = xmlparse(local.http.filecontent)>
 			<cfif structkeyexists(local.ret_xml, "notice")>
@@ -183,11 +197,15 @@
 
 	<cffunction name="build_backtrace" access="private" returntype="array" output="no" hint="Cleans up the context array and pulls out the information required for the backtrace">
 		<cfargument name="context" type="array" required="yes" hint="The context element of the error structure">
-		<cfset var lines = []>
-		<cfset var line = {}>
-		<cfset var item = {}>
-		<cfloop array="#arguments.context#" index="item">
-			<cfset line = { line = 0, file = "", method = "" }>
+		<cfset var lines = ArrayNew(1)>
+		<cfset var line = StructNew()>
+		<cfset var item = StructNew()>
+		<cfloop from="1" to="#ArrayLen(arguments.context)#" index="item">
+		    <cfset line = StructNew()>
+			<cfset line.line = 0>
+			<cfset line.file = "">
+			<cfset line.method = "">
+			
 			<cfif structkeyexists(item, "line")><cfset line.line = item.line></cfif>
 			<cfif structkeyexists(item, "template")><cfset line.file = item.template></cfif>
 			<cfif structkeyexists(item, "raw_trace") AND refind("at cf.*?\$func([A-Z_-]+)\.runFunction", item.raw_trace)>
@@ -203,7 +221,7 @@
 		<cfargument name="action" type="string" required="no" default="" hint="The action to report">
 		<cfargument name="controller" type="string" required="no" default="" hint="The controller to report">
 		<cfset var error = errorToStruct(arguments.exception)>
-		<cfset var params = {}>
+		<cfset var params = StructNew()>
 		<cfif len(arguments.action)><cfset params.action = arguments.action></cfif>
 		<cfif len(arguments.controller)><cfset params.controller = arguments.controller></cfif>
 		<cfset this.send(error=error, params=params)>
@@ -211,7 +229,7 @@
 
 	<cffunction name="errorToStruct" access="private" returntype="struct" output="no" hint="Converts a CFCATCH to a proper structure (or just shallow-copies if it's already a structure)">
 		<cfargument name="catch" type="any" required="yes" hint="The CFCATCH to convert">
-		<cfset var error = {}>
+		<cfset var error = StructNew()>
 		<cfset var key = "">
 		<cfloop collection="#arguments.catch#" item="key">
 			<cfset error[key] = arguments.catch[key]>
